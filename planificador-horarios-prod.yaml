@@ -1,0 +1,810 @@
+openapi: 3.0.3
+info:
+  title: Planificador Académico con IA - API (Contrato OAS)
+  description: |
+    Contrato RESTful del proyecto académico "Planificador de Horarios con IA".
+    La implementación real de persistencia se realiza vía BaaS (Backendless).
+    Este contrato sirve como fuente para desarrollo, documentación y pruebas.
+
+    Equipo 46
+
+    Gabriel Sareñana Labra #A01795507
+    David Plazer Medrano  #A01796849
+    Daniel Nuñez Constantino #A01379717
+    Didier Gamboa Angulo  #A01795710
+  version: "1.1.0"
+  contact:
+    name: Equipo Planificador IA
+    email: equipo46@example.com
+    url: https://github.com/example/planificador-ia
+
+servers:
+  - url: http://localhost:8000
+    description: Proxy local (Flask) hacia Backendless (recomendado para demos)
+  - url: https://api.backendless.com/{APP_ID}/{REST_API_KEY}
+    description: Backendless REST API directa (remplazar variables por tus llaves)
+    variables:
+      APP_ID:
+        default: E6AC194E-095F-44F0-BF76-223C12EF6337
+      REST_API_KEY:
+        default: 557AD802-52D8-422D-90EF-BDF931195F97
+
+tags:
+  - name: Auth
+    description: Autenticación y sesión
+  - name: Subjects
+    description: Operaciones sobre materias/asignaturas
+  - name: Events
+    description: Gestión de eventos académicos
+  - name: Notifications
+    description: Notificaciones del planificador
+  - name: Preferences
+    description: Preferencias de estudio por usuario
+  - name: Conflicts
+    description: Detección de traslapes
+  - name: Suggestions
+    description: Sugerencias de bloques de estudio
+  - name: Health
+    description: Estado de salud del servicio
+
+# Seguridad global (excepto rutas que la desactiven explícitamente)
+security:
+  - userToken: []
+
+paths:
+  /health:
+    get:
+      security: []  # sin auth para monitoreo
+      tags: [Health]
+      summary: Verifica que el servicio esté vivo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /auth/login:
+    post:
+      security: []  # normalmente login no exige token previo
+      tags: [Auth]
+      summary: Inicia sesión y obtiene user-token (cuando se use auth de Backendless)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLoginRequest"
+      responses:
+        "200":
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserLoginResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /subjects:
+    get:
+      tags: [Subjects]
+      summary: Listar materias (Subjects)
+      parameters:
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/Offset"
+        - in: query
+          name: code
+          schema: { type: string }
+          description: Filtra por código exacto (opcional)
+      responses:
+        "200":
+          description: Listado paginado de materias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSubjects"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      tags: [Subjects]
+      summary: Crear materia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubjectCreate" }
+      responses:
+        "201":
+          description: Materia creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subject" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /subjects/{id}:
+    get:
+      tags: [Subjects]
+      summary: Obtener materia por objectId
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Materia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subject" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    put:
+      tags: [Subjects]
+      summary: Actualizar materia
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubjectUpdate" }
+      responses:
+        "200":
+          description: Materia actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subject" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    delete:
+      tags: [Subjects]
+      summary: Eliminar materia
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "204":
+          description: Eliminada sin contenido
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /events:
+    get:
+      tags: [Events]
+      summary: Listar eventos
+      parameters:
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/Offset"
+        - in: query
+          name: subjectId
+          schema: { type: string }
+          description: Filtra por subjectId
+        - in: query
+          name: startFrom
+          schema: { type: string, format: date-time }
+          description: Devuelve eventos con startIso >= startFrom (ISO 8601 UTC, ej. 2025-03-15T14:30:00Z)
+        - in: query
+          name: endUntil
+          schema: { type: string, format: date-time }
+          description: Devuelve eventos con endIso <= endUntil (ISO 8601 UTC, ej. 2025-03-15T16:00:00Z)
+      responses:
+        "200":
+          description: Listado paginado de eventos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedEvents"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      tags: [Events]
+      summary: Crear evento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventCreate" }
+      responses:
+        "201":
+          description: Evento creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /events/{id}:
+    get:
+      tags: [Events]
+      summary: Obtener evento por objectId
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "200":
+          description: Evento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    put:
+      tags: [Events]
+      summary: Actualizar evento
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EventUpdate" }
+      responses:
+        "200":
+          description: Evento actualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    delete:
+      tags: [Events]
+      summary: Eliminar evento
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      responses:
+        "204":
+          description: Eliminado sin contenido
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Listar notificaciones (paginado)
+      parameters:
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/Offset"
+        - in: query
+          name: status
+          schema: { type: string, enum: [new, read, dismissed] }
+      responses:
+        "200":
+          description: Listado paginado de notificaciones
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedNotifications"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /notifications/{id}:
+    patch:
+      tags: [Notifications]
+      summary: Cambiar estado de notificación (read/dismissed)
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [new, read, dismissed]
+      responses:
+        "200":
+          description: Notificación actualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /preferences/{userId}:
+    get:
+      tags: [Preferences]
+      summary: Obtener preferencias por usuario
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Preferencias
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preference" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    put:
+      tags: [Preferences]
+      summary: Actualizar preferencias del usuario
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreferenceUpdate" }
+      responses:
+        "200":
+          description: Preferencias actualizadas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preference" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /conflicts:
+    get:
+      tags: [Conflicts]
+      summary: Detectar traslapes de eventos
+      description: Devuelve conflictos calculados para un rango de tiempo o un evento en particular.
+      parameters:
+        - in: query
+          name: eventId
+          schema: { type: string }
+          description: Si se especifica, evalúa conflictos contra este evento
+        - in: query
+          name: start
+          schema: { type: string, format: date-time }
+          description: Inicio del rango (ISO 8601 UTC, ej. 2025-03-15T14:30:00Z)
+        - in: query
+          name: end
+          schema: { type: string, format: date-time }
+          description: Fin del rango (ISO 8601 UTC, ej. 2025-03-15T16:00:00Z)
+      responses:
+        "200":
+          description: Lista de conflictos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Conflict" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /suggestions/study-blocks:
+    get:
+      tags: [Suggestions]
+      summary: Sugerencias de bloques de estudio
+      description: Genera sugerencias basadas en huecos de tiempo y carga académica.
+      parameters:
+        - in: query
+          name: userId
+          schema: { type: string }
+          required: true
+        - in: query
+          name: limit
+          schema: { type: integer, default: 3, minimum: 1, maximum: 10 }
+      responses:
+        "200":
+          description: Lista de sugerencias
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Suggestion" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+components:
+  securitySchemes:
+    userToken:
+      type: apiKey
+      in: header
+      name: user-token
+      description: Token de sesión devuelto por /auth/login (cuando se use autenticación)
+
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: objectId de Backendless
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      description: Tamaño de página para listados
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+      description: Desplazamiento para paginación
+
+  responses:
+    UnauthorizedError:
+      description: No autorizado (token faltante o inválido)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            unauthorized:
+              value: { message: "Token inválido o expirado", code: 401 }
+    ForbiddenError:
+      description: Prohibido (sin permisos suficientes)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            forbidden:
+              value: { message: "Acceso denegado", code: 403 }
+    NotFoundError:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            notFound:
+              value: { message: "No encontrado", code: 404 }
+    BadRequestError:
+      description: Solicitud inválida
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            badRequest:
+              value: { message: "Parámetros inválidos", code: 400, details: "Falta 'name'" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+        code: { type: integer, example: 400 }
+        details: { type: string }
+      example:
+        message: Invalid request
+        code: 400
+        details: Missing field "name"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        time:
+          type: string
+          format: date-time
+          description: Hora del servidor en ISO 8601 UTC (ej. 2025-03-15T12:00:00Z)
+
+    UserLoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login: { type: string, description: "Email o username" }
+        password: { type: string, format: password }
+    UserLoginResponse:
+      type: object
+      properties:
+        user-token: { type: string, description: "Encabezado a enviar en user-token" }
+        objectId: { type: string }
+        email: { type: string, format: email }
+
+    # -------- Subjects --------
+    Subject:
+      type: object
+      description: Materia/Asignatura
+      properties:
+        objectId: { type: string, readOnly: true }
+        name: { type: string, description: "Nombre de la materia" }
+        code: { type: string, description: "Código único de la materia" }
+        kind:
+          type: string
+          enum: [class, exam, task, project, other]
+          default: class
+        weeklyLoadHours:
+          type: integer
+          minimum: 0
+          default: 4
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Fecha de creación (ISO 8601 UTC, ej. 2025-03-15T14:30:00Z)
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Fecha de actualización (ISO 8601 UTC)
+      required: [objectId, name, code]
+      example:
+        objectId: "ABCD1234"
+        name: "Cálculo I"
+        code: "CALC1"
+        kind: "class"
+        weeklyLoadHours: 4
+
+    SubjectCreate:
+      title: SubjectCreate
+      type: object
+      required: [name, code]
+      properties:
+        name: { type: string }
+        code: { type: string }
+        kind:
+          type: string
+          enum: [class, exam, task, project, other]
+          default: class
+        weeklyLoadHours:
+          type: integer
+          minimum: 0
+          default: 4
+
+    SubjectUpdate:
+      title: SubjectUpdate
+      type: object
+      properties:
+        name: { type: string }
+        code: { type: string }
+        kind:
+          type: string
+          enum: [class, exam, task, project, other]
+        weeklyLoadHours: { type: integer, minimum: 0 }
+
+    PaginatedSubjects:
+      type: object
+      properties:
+        total: { type: integer, example: 124 }
+        count: { type: integer, example: 10 }
+        offset: { type: integer, example: 0 }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/Subject" }
+
+    # -------- Events --------
+    Event:
+      type: object
+      description: Evento en calendario (clase, examen, estudio)
+      properties:
+        objectId: { type: string, readOnly: true }
+        title: { type: string }
+        subjectId: { type: string, description: "Ref a Subject.objectId" }
+        startIso:
+          type: string
+          format: date-time
+          description: Inicio del evento (ISO 8601 UTC, ej. 2025-10-28T10:00:00Z)
+        endIso:
+          type: string
+          format: date-time
+          description: Fin del evento (ISO 8601 UTC, ej. 2025-10-28T11:00:00Z)
+        type: { type: string, enum: [class, exam, study, mentoring, other], default: class }
+        location: { type: string }
+        notes: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Fecha de creación (ISO 8601 UTC)
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Fecha de actualización (ISO 8601 UTC)
+      required: [objectId, title, startIso, endIso]
+      example:
+        objectId: "EVT123"
+        title: "Álgebra"
+        subjectId: "SUBJ789"
+        startIso: "2025-10-28T10:00:00Z"
+        endIso: "2025-10-28T11:00:00Z"
+        type: "class"
+        location: "Aula 3"
+        notes: "Cap. 2"
+
+    EventCreate:
+      title: EventCreate
+      type: object
+      required: [title, startIso, endIso]
+      properties:
+        title: { type: string }
+        subjectId: { type: string }
+        startIso:
+          type: string
+          format: date-time
+          description: Inicio del evento (ISO 8601 UTC)
+        endIso:
+          type: string
+          format: date-time
+          description: Fin del evento (ISO 8601 UTC)
+        type: { type: string, enum: [class, exam, study, mentoring, other], default: class }
+        location: { type: string }
+        notes: { type: string }
+
+    EventUpdate:
+      title: EventUpdate
+      type: object
+      properties:
+        title: { type: string }
+        subjectId: { type: string }
+        startIso:
+          type: string
+          format: date-time
+          description: Inicio del evento (ISO 8601 UTC)
+        endIso:
+          type: string
+          format: date-time
+          description: Fin del evento (ISO 8601 UTC)
+        type: { type: string, enum: [class, exam, study, mentoring, other] }
+        location: { type: string }
+        notes: { type: string }
+
+    PaginatedEvents:
+      type: object
+      properties:
+        total: { type: integer, example: 320 }
+        count: { type: integer, example: 50 }
+        offset: { type: integer, example: 0 }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/Event" }
+
+    # -------- Notifications --------
+    Notification:
+      type: object
+      description: Notificación de evento próximo o conflicto
+      properties:
+        objectId: { type: string, readOnly: true }
+        eventId: { type: string }
+        kind: { type: string, enum: [upcoming, conflict] }
+        sendAtIso:
+          type: string
+          format: date-time
+          description: Momento de envío (ISO 8601 UTC)
+        status: { type: string, enum: [new, read, dismissed], default: new }
+      required: [objectId, kind, status]
+      example:
+        objectId: "NTF1"
+        eventId: "EVT123"
+        kind: "upcoming"
+        sendAtIso: "2025-10-28T09:55:00Z"
+        status: "new"
+
+    PaginatedNotifications:
+      type: object
+      properties:
+        total: { type: integer, example: 45 }
+        count: { type: integer, example: 10 }
+        offset: { type: integer, example: 0 }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+
+    # -------- Preferences --------
+    Preference:
+      type: object
+      description: Preferencias de estudio por usuario
+      properties:
+        objectId: { type: string, readOnly: true }
+        userId: { type: string }
+        studyWindowStart: { type: string, example: "07:00" }
+        studyWindowEnd: { type: string, example: "22:00" }
+        bufferMinutes: { type: integer, default: 15 }
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Fecha de creación (ISO 8601 UTC)
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Fecha de actualización (ISO 8601 UTC)
+      required: [userId]
+      example:
+        objectId: "PREF1"
+        userId: "U001"
+        studyWindowStart: "08:00"
+        studyWindowEnd: "21:00"
+        bufferMinutes: 20
+
+    PreferenceUpdate:
+      type: object
+      properties:
+        studyWindowStart: { type: string }
+        studyWindowEnd: { type: string }
+        bufferMinutes: { type: integer, minimum: 0 }
+
+    # -------- Conflicts / Suggestions --------
+    Conflict:
+      type: object
+      description: Resultado de detección de traslape de eventos
+      properties:
+        eventA: { $ref: "#/components/schemas/Event" }
+        eventB: { $ref: "#/components/schemas/Event" }
+        overlapMinutes: { type: integer }
+      required: [eventA, eventB, overlapMinutes]
+      example:
+        eventA: { objectId: "EVT123", title: "Clases IA", startIso: "2025-10-28T10:00:00Z", endIso: "2025-10-28T11:00:00Z" }
+        eventB: { objectId: "EVT456", title: "Examen BD", startIso: "2025-10-28T10:30:00Z", endIso: "2025-10-28T11:30:00Z" }
+        overlapMinutes: 30
+
+    Suggestion:
+      type: object
+      description: Sugerencia de bloque de estudio
+      properties:
+        startIso:
+          type: string
+          format: date-time
+          description: Inicio sugerido (ISO 8601 UTC)
+        endIso:
+          type: string
+          format: date-time
+          description: Fin sugerido (ISO 8601 UTC)
+        score: { type: number, format: float, description: "Ranking de conveniencia" }
+        rationale: { type: string }
+      example:
+        startIso: "2025-10-28T14:00:00Z"
+        endIso: "2025-10-28T15:00:00Z"
+        score: 0.87
+        rationale: "Bloque libre cercano a clase de Álgebra; buena distribución de carga."
