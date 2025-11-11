@@ -60,6 +60,9 @@ def create_app(config_name: str = None) -> Flask:
     # Register error handlers
     register_error_handlers(app)
 
+    # Register root route
+    _register_root_route(app)
+
     # Register blueprints
     _register_blueprints(app)
 
@@ -67,6 +70,43 @@ def create_app(config_name: str = None) -> Flask:
     app.logger.info(f"Application initialized with {config.__class__.__name__}")
 
     return app
+
+
+def _register_root_route(app: Flask) -> None:
+    """
+    Registers the root route for API information.
+
+    Provides a welcome endpoint at '/' that returns basic API information
+    and available endpoints.
+
+    Args:
+        app: Flask application instance.
+    """
+    @app.route('/', methods=['GET'])
+    def root():
+        """Root endpoint providing API information."""
+        return {
+            'name': 'Planificador de Horarios - Backend API',
+            'version': '1.0.0',
+            'description': 'Backend RESTful para sistema académico de planificación de horarios inteligente',
+            'status': 'online',
+            'endpoints': {
+                'auth': {
+                    'login': 'POST /auth/login'
+                },
+                'subjects': {
+                    'list': 'GET /subjects',
+                    'create': 'POST /subjects',
+                    'get': 'GET /subjects/{id}',
+                    'update': 'PUT /subjects/{id}',
+                    'delete': 'DELETE /subjects/{id}'
+                }
+            },
+            'documentation': {
+                'readme': 'https://github.com/equipo46/backend/README.md',
+                'openapi': 'planificador-horarios-prod.yaml'
+            }
+        }, 200
 
 
 def _configure_logging(app: Flask, config: Config) -> None:
@@ -112,18 +152,18 @@ def _register_blueprints(app: Flask) -> None:
         This is a common pattern in Flask applications.
     """
     # Import blueprints here to avoid circular imports
-    # TODO: Uncomment as routes are implemented
-    # from app.routes.auth import auth_bp
-    # from app.routes.subjects import subjects_bp
+    from app.routes.auth import auth_bp
+    from app.routes.subjects import subjects_bp
 
     # Register blueprints
-    # TODO: Uncomment as routes are implemented
-    # app.register_blueprint(auth_bp)
-    # app.register_blueprint(subjects_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(subjects_bp)
 
-    app.logger.info("Blueprints registered successfully")
+    # Log registered blueprints
+    registered_blueprints = [bp.name for bp in app.blueprints.values()]
+    app.logger.info(f"Blueprints registered successfully: {', '.join(registered_blueprints)}")
 
 
-# NOTE: The actual route blueprints (auth, subjects) will be created
-# in the next phase. The TODO comments above indicate where they will
-# be imported and registered once implemented.
+# NOTE: All Phase 3 blueprints are now active:
+# - auth blueprint provides /auth/login endpoint
+# - subjects blueprint provides CRUD operations for /subjects endpoints
